@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#1b1424"><meta name="screen-orientation" content="landscape">
+<title>DAREDASH</title>
+<style>
+:root{--bg:#1b1424;--ink:#f6efe2;--hot:#ff5a4d;--gold:#ffc94a;--mint:#5fe0b0;box-sizing:border-box}
+html,body{width:100%;height:100%;padding:0;overscroll-behavior:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;margin:0;background:var(--bg);color:var(--ink);font-family:"Trebuchet MS",Verdana,sans-serif;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+canvas{display:block;background:#000;max-width:100%;max-height:100%;image-rendering:auto}
+#ui{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:rgba(20,12,30,.86);text-align:center;padding:16px;overflow-y:auto;justify-content:safe center}
+#ui.h{display:none}
+h1{font-size:clamp(38px,9vw,72px);margin:0;letter-spacing:.06em;color:var(--gold);text-shadow:4px 4px 0 var(--hot)}
+h2{margin:0;font-size:28px}
+p{margin:0;font-size:18px;max-width:420px}
+button{font:inherit;font-size:20px;font-weight:700;padding:12px 26px;border-radius:14px;border:3px solid var(--ink);background:var(--hot);color:#fff;min-width:200px;cursor:pointer;transition:transform .08s}
+button:hover{transform:scale(1.05)}button:active{transform:scale(.95)}button:focus-visible{outline:4px solid var(--mint);outline-offset:2px}
+button.s{background:#3a2c52}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:8px;width:min(100%,520px)}
+#grid button{min-width:0;padding:10px 0;font-size:18px;border-width:2px}
+#grid button:disabled{opacity:.35;cursor:not-allowed}
+#grid button.done{background:var(--mint);color:#123}
+#tc{position:fixed;inset:auto 0 0 0;display:none;justify-content:space-between;padding:10px max(14px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(14px,env(safe-area-inset-left,0px));pointer-events:none}
+#rot{position:fixed;inset:0;z-index:99;background:#1b1424;display:none;align-items:center;justify-content:center;text-align:center;padding:24px;flex-direction:column;gap:12px}
+@media(orientation:portrait) and (pointer:coarse){#rot{display:flex}}
+#tc.on{display:flex}
+#tc div{pointer-events:auto;width:var(--cs,84px);height:var(--cs,84px);border-radius:50%;background:rgba(255,255,255,.18);border:3px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;font-size:32px;touch-action:none}
+#tc div.p{background:rgba(255,90,77,.6)}
+#tc .g{display:flex;gap:12px;background:none;border:0;width:auto;height:auto;pointer-events:none}
+#tc .g div{pointer-events:auto}
+#pb{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));right:calc(10px + env(safe-area-inset-right,0px));width:48px;min-width:0;padding:6px;font-size:20px;background:#3a2c52}
+@media(prefers-reduced-motion:reduce){button{transition:none}}
+#grid button small{display:block;font-size:10px;font-weight:400;line-height:1.3}
+#grid .wh{grid-column:1/-1;text-align:left;font-weight:700;color:var(--gold);font-size:14px;margin-top:6px}
+.bg{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:min(100%,440px)}.bg button{min-width:0;font-size:16px;padding:10px 6px}.bg .w{grid-column:1/-1}
+#ui.v{background:rgba(20,12,30,.45)}.yd{animation:gl 1s infinite alternate}@keyframes gl{from{text-shadow:2px 2px 0 var(--hot)}to{text-shadow:0 0 24px var(--gold),4px 4px 0 var(--hot)}}
+.al{font-size:14px;text-align:left;width:min(100%,420px)}.al b{color:var(--gold)}
+</style></head><body>
+<div id="stage"><canvas id="c" width="800" height="450"></canvas></div>
+<button id="pb" aria-label="Pause">II</button>
+<div id="tc"><div class="g"><div data-k="l">◀</div><div data-k="r">▶</div></div><div data-k="j">▲</div></div>
+<div id="ui"></div>
+<div id="rot"><h2>ROTATE YOUR PHONE</h2><p>For the best experience, play DAREDASH in landscape mode.</p></div>
+<script>
+"use strict";
+// ---------- config ----------
+const C={SPEED:230,ACCEL:2200,FRIC:2600,GRAV:1550,JUMP:575,MAXFALL:800,AIR:0.75,COYOTE:.09,BUFFER:.1,W:800,H:450,PW:20,PH:28,DEATH_T:.55};
+const LANG={en:{play:"PLAY",cont:"CONTINUE",levels:"LEVELS",sound:"SOUND",shake:"SCREEN SHAKE",reset:"RESET PROGRESS",back:"BACK",next:"NEXT LEVEL",again:"REPLAY",menu:"MENU",resume:"RESUME"}};
+const T=LANG.en;
+// ---------- levels (data-driven) ----------
+// p=platforms [x,y,w,h]; s=static spikes; tr=traps; d=door [x,y]; W=level width
+const LV=[
+{n:"First Steps",W:900,s0:[60,360],p:[[0,400,900,50]],d:[820,344]},
+{n:"Mind the Gap",W:900,s0:[60,360],p:[[0,400,320,50],[440,400,460,50]],d:[830,344]},
+{n:"Loose Ground",W:900,s0:[60,360],p:[[0,400,300,50],[500,400,400,50]],tr:[{k:"vanish",r:[300,400,200,50],d:.2}],d:[830,344]},
+{n:"Watch Above",W:900,s0:[60,360],p:[[0,400,900,50]],tr:[{k:"block",r:[440,-80,70,80],z:[340,300,60,100],to:400}],d:[830,344]},
+{n:"Surprise Guest",W:900,s0:[60,360],p:[[0,400,900,50]],tr:[{k:"hid",r:[500,384,60,16],z:[440,300,50,100]}],d:[830,344]},
+{n:"Wrong Door",W:950,s0:[60,360],p:[[0,400,950,50],[660,340,80,15],[770,280,100,15]],tr:[{k:"fake",r:[560,344,30,56]}],d:[830,224]},
+{n:"Saw Alley",W:900,s0:[60,360],p:[[0,400,900,50]],tr:[{k:"saw",x0:280,x1:640,y:384,s:150}],d:[830,344]},
+{n:"Runaway Door",W:950,s0:[60,360],p:[[0,400,520,50],[650,400,300,50]],tr:[{k:"run",z:[300,300,60,100],to:[860,344]}],d:[440,344]},
+{n:"Stepping Stones",W:1000,s0:[60,360],p:[[0,400,200,50],[790,400,210,50]],tr:[{k:"vanish",r:[270,380,80,15],d:.25,t:1},{k:"vanish",r:[420,340,80,15],d:.25,t:1},{k:"vanish",r:[570,380,80,15],d:.25,t:1}],d:[920,344]},
+{n:"The Gauntlet",W:1500,s0:[60,360],p:[[0,400,260,50],[760,400,740,50],[330,380,80,15],[470,340,80,15],[610,380,80,15]],
+ tr:[{k:"hid",r:[190,384,50,16],z:[130,300,50,100]},{k:"vanish",r:[330,380,80,15],d:.3,t:1,skip:1},{k:"saw",x0:820,x1:1040,y:384,s:160},{k:"block",r:[1120,-80,70,80],z:[1070,300,50,100],to:400},{k:"fake",r:[1230,344,30,56]},{k:"hid",r:[1310,384,60,16],z:[1260,300,50,100]}],d:[1420,344]}
+];
+// fix: level 10 platforms 5-7 are the vanish ones; remove duplicate solid copies
+LV[9].p=[[0,400,260,50],[760,400,740,50]];
+LV[9].tr[1].skip=0;
+LV[9].tr.push({k:"vanish",r:[470,340,80,15],d:.3,t:1},{k:"vanish",r:[610,380,80,15],d:.3,t:1});
+// ---------- handcrafted levels 11-50 ----------
+const G=(x,w)=>[x,400,w,50],Pf=(x,y,w)=>[x,y,w,15],V=(x,y,w,d,m,h)=>({k:"vanish",r:[x,y,w,h||15],d,m}),
+H=(x,y,w,zx)=>({k:"hid",r:[x,y-16,w,16],z:[zx,0,50,450]}),B=(x,zx,to,w)=>({k:"block",r:[x,-60,w||60,60],z:[zx,0,40,450],to:to||400}),
+S=(a,b,y,s)=>({k:"saw",x0:a,x1:b,y,s}),VS=(x,a,b,s)=>({k:"saw",ax:"y",x,y0:a,y1:b,y:a,s}),
+M=(x,y,w,a,b,s,ax)=>({k:"mov",ax:ax||"x",a,b,s,r:ax==="y"?[x,a,w,15]:[a,y,w,15]}),
+Gh=(x,y,w,zx,m)=>({k:"ghost",m,r:[x,y,w,15],z:[zx,0,60,450]}),F=(x,y)=>({k:"fake",r:[x,y||344,30,56]}),FX=(x,y)=>({k:"fx",r:[x,y||344,30,56]}),
+R=(zx,tx,ty)=>({k:"run",z:[zx,0,40,450],to:[tx,ty]}),Lv=(n,W,p,tr,d,s)=>({n,W,s0:[60,360],p,s:s||[],tr:tr||[],d});
+LV.push(
+Lv("The Floor Lies",1150,[G(0,240),G(330,120),G(560,100),G(760,390)],[V(450,400,110,.35,0,50),V(660,400,100,.18,0,50)],[1070,344],[[830,384,48,16]]),
+Lv("Not So Safe",1150,[G(0,140),Pf(200,340,90),Pf(330,340,90),Pf(460,340,90),Pf(590,340,90),Pf(720,340,90),Pf(850,340,90),G(990,160)],[H(470,340,40,410),H(730,340,40,670)],[1080,344]),
+Lv("Falling Sky",1450,[G(0,1160),G(1275,175)],[B(350,300),B(600,540),B(760,700),B(930,860),B(1050,990)],[1340,344]),
+Lv("Moving Target",1350,[G(0,200),Pf(520,340,100),Pf(800,260,90),G(1100,250)],[M(0,380,90,260,380,60),M(680,0,90,360,240,60,"y"),M(0,300,90,920,1000,60)],[1200,344]),
+Lv("The Fake Shortcut",1350,[G(0,1350),Pf(150,330,80),Pf(370,300,80),Pf(590,320,80)],[V(260,320,70,.15),V(480,300,70,.15),V(700,340,70,.15),H(400,300,40,340),S(300,700,384,120)],[1250,344],[[900,384,48,16]]),
+Lv("Door Trick",1050,[G(0,600),G(710,340)],[R(300,900,344),H(780,400,50,720),F(850)],[500,344]),
+Lv("Don't Stop",1350,[G(0,200),G(1010,340)],[...[...Array(8)].map((_,i)=>V(200+100*i,400,100,.4-i*.02,"l",50))],[1150,344]),
+Lv("Saw Timing",1350,[G(0,850),G(1010,340)],[S(250,450,384,110),S(520,720,384,140),S(600,800,384,190),V(880,380,90,.25),S(1050,1200,384,170)],[1260,344]),
+Lv("One Way",1400,[G(0,1400),Pf(560,320,100),Pf(720,270,100)],[F(770,214),S(900,1100,384,130)],[1320,344],[[760,384,48,16]]),
+Lv("Twenty Seconds",1650,[G(0,200),G(300,150),G(550,150),G(800,150),G(1050,150),G(1300,350)],[H(1400,400,50,1340)],[1580,344]),
+Lv("The Invisible Path",1250,[G(0,200),G(790,460)],[Gh(270,360,90,200),Gh(400,330,90,340),Gh(530,300,90,470),Gh(660,330,90,600)],[1150,344],[[900,384,48,16]]),
+Lv("Reverse Trap",1100,[G(0,200),G(660,440)],[V(270,380,80,.3,"l"),V(400,380,80,.3,"l"),V(530,340,80,.3,"l"),B(410,395,380)],[1000,344]),
+Lv("Falling Floor",1450,[G(0,200),G(990,460)],[220,330,440,550,660,770,880].map((x,i)=>V(x,380-[0,30,60,90,60,30,0][i],90,.24-i*.01,"l")),[1350,344]),
+Lv("The Long Jump",1600,[G(0,200),G(280,120),G(500,120),G(755,110),G(925,150),G(1220,380)],[],[1480,344],[[965,384,48,16]]),
+Lv("Fake Floor",1450,[G(0,200),G(230,80),G(450,80),G(560,80),G(780,80),G(1000,450)],[V(340,400,80,.1,0,50),H(575,400,30,510),V(670,400,80,.1,0,50),V(890,400,80,.1,0,50)],[1300,344]),
+Lv("Saw Corridor",1300,[G(0,200),Pf(260,340,70),Pf(390,340,60),Pf(510,340,60),Pf(630,340,70),Pf(760,340,60),G(900,400)],[VS(360,240,390,100),VS(480,240,390,120),VS(600,240,390,140),VS(730,240,390,160)],[1200,344]),
+Lv("The Chaser",1460,[G(0,150),G(1060,400)],[...[...Array(8)].map((_,i)=>V(150+100*i,400,100,.3-i*.01,"l",50)),B(500,420)],[1300,344],[[720,384,48,16]]),
+Lv("Wrong Way",1500,[G(0,600),G(710,790),Pf(300,300,80),Pf(430,260,80)],[F(200),F(560),F(460,204),H(900,400,50,850),S(1000,1200,384,130)],[1400,344]),
+Lv("Disappearing Road",1950,[G(0,200),G(1500,400)],[...Array(12)].map((_,i)=>V(220+105*i,i%2?350:380,80,Math.max(.12,.32-i*.018))),[1800,344]),
+Lv("Halfway Hell",2350,[G(0,200),G(310,190),G(600,300),G(1000,100),G(1340,160),G(1500,300),G(1910,300)],[V(200,400,110,.3,0,50),H(400,400,50,350),B(760,680),M(0,380,90,1110,1230,70),F(1750),R(1600,2050,344)],[1700,344]),
+Lv("Don't Trust the Door",1400,[G(0,900),G(1010,390)],[F(450),F(750),H(650,400,50,600),H(1100,400,50,1050)],[1200,344]),
+Lv("The Ceiling",1250,[G(0,1250),[200,320,300,25],[600,320,250,25]],[S(900,1050,384,140),H(1120,400,40,1070)],[1180,344],[[280,384,24,16],[380,384,24,16],[700,384,24,16],[770,384,24,16]]),
+Lv("Trap Chain",1500,[G(0,200),G(340,700),G(1150,300)],[V(200,400,140,.25,0,50),B(520,440),S(650,900,384,150),F(880),R(930,1330,344)],[980,344]),
+Lv("No Landing",1800,[G(0,200),...[220,380,540,700,860,1020,1180,1340].map((x,i)=>Pf(x,i%2?320:350,60)),G(1500,300)],[VS(450,230,330,110),VS(770,230,330,120),VS(1090,230,330,130)],[1600,344]),
+Lv("The Moving Door",1500,[G(0,500),G(610,300),G(1020,480)],[R(380,750,344),R(700,1200,344),H(1100,400,50,1050)],[420,344]),
+Lv("Collapse",1600,[G(0,200),G(1210,390)],[...[...Array(9)].map((_,i)=>V(200+100*i,400,100,.5-.04*i,0,50)),B(700,620)],[1350,344]),
+Lv("Saw Maze",1500,[G(0,1500),Pf(200,320,100),Pf(400,280,100),Pf(600,240,100)],[H(640,240,40,590),S(250,450,384,120),S(500,700,384,160),VS(900,250,390,130),S(1000,1200,384,140),F(1350)],[1420,344]),
+Lv("The Bait",1350,[G(0,300),Pf(340,350,50),Pf(440,330,50),Pf(540,350,50),Pf(640,330,50),G(750,600)],[V(350,385,350,.1),H(450,385,60,400)],[1150,344]),
+Lv("Everything Moves",2000,[G(0,200),Pf(460,360,80),Pf(880,280,80),G(1000,600),G(1710,290)],[M(0,380,90,230,350,70),V(600,340,80,.25),M(760,0,90,380,250,60,"y"),B(1300,1220),S(1100,1250,384,150),R(1400,1900,344)],[1500,344]),
+Lv("Forty Traps",2750,[G(0,500),G(800,150),Pf(1000,360,50),Pf(1110,330,45),Pf(1220,360,45),Pf(1330,330,50),G(1450,600),G(2250,500)],[M(0,380,90,560,680,80),V(2050,400,100,.2,0,50),V(2150,400,100,.18,0,50),F(1560),H(1700,400,50,1650),B(1850,1770),S(1900,2000,384,140),R(2270,2600,344)],[2330,344],[[200,384,40,16],[350,384,40,16]]),
+Lv("Memory",1900,[G(0,150),Pf(200,350,80),Pf(460,350,80),Pf(590,350,80),Pf(850,350,80),Pf(980,350,80),Pf(1240,350,80),Pf(1370,350,80),G(1500,400)],[V(330,350,80,.1),V(720,350,80,.1),V(1110,350,80,.1),H(605,350,30,540),H(995,350,30,930)],[1700,344]),
+Lv("The Fake Exit",1500,[G(0,480),G(1040,460)],[V(480,400,140,.5,"x",50),FX(540),Gh(650,340,80,0,"x"),Gh(780,300,80,0,"x"),Gh(910,340,80,0,"x")],[1350,344]),
+Lv("Speed Trap",2150,[G(0,200),G(1190,500),G(1800,300)],[V(290,400,90,.15,0,50),V(470,400,90,.15,0,50),V(650,400,90,.15,0,50),V(830,400,90,.15,0,50),V(1010,400,90,.15,0,50),S(1200,1500,384,180),B(1520,1450)],[1950,344]),
+Lv("Precision",1600,[G(0,200),Pf(250,360,45),Pf(350,330,40),Pf(450,300,40),Pf(550,330,40),Pf(660,360,40),Pf(980,310,40),Pf(1080,280,40),Pf(1180,310,40),G(1290,300)],[M(0,340,45,760,850,70),VS(520,220,320,110),VS(1050,200,300,120)],[1420,344]),
+Lv("Chain Reaction",1950,[G(0,250),G(370,330),G(900,200),Pf(1200,360,45),Pf(1330,340,45),Pf(1430,320,40),Pf(1530,340,40),G(1650,300)],[V(250,400,120,.2,0,50),B(520,440),V(800,400,100,.2,0,50),S(910,990,384,170),R(900,1700,344)],[1040,344]),
+Lv("No Mistakes",2600,[G(0,150),Pf(500,350,45),Pf(600,320,40),G(700,120),Pf(1100,320,60),Pf(1300,330,40),G(1420,400),G(1920,100),Pf(2050,340,40),Pf(2150,310,40),G(2260,300)],[V(180,400,90,.2,0,50),V(350,400,90,.2,0,50),M(0,350,50,870,970,80),H(1103,320,24,1050),V(1200,300,50,.15),S(1500,1620,384,150),B(1700,1650)],[2400,344]),
+Lv("The Maze",2100,[G(0,300),G(300,600),Pf(320,340,80),Pf(450,300,80),Pf(580,260,80),G(1100,1000)],[Gh(710,240,80,650),Gh(840,240,80,780),Gh(970,270,80,910),F(850),S(400,600,384,130),H(1600,400,50,1550),S(1200,1500,384,140),F(1750)],[1900,344]),
+Lv("Everything You Know",3100,[G(0,180),G(570,200),Pf(830,350,70),Pf(950,350,70),Pf(1070,350,70),G(1190,400),Pf(1900,330,45),Pf(2000,300,40),Pf(2100,330,45),G(2210,350),G(2760,300)],[V(210,400,90,.2,0,50),V(330,400,90,.18,0,50),V(450,400,90,.15,0,50),H(953,350,28,900),B(1300,1250),B(1420,1380),M(0,360,60,1700,1800,80),VS(1972,200,320,120),F(2300),V(2560,400,90,.15,0,50),V(2660,400,90,.15,0,50),R(2800,2990,344)],[2860,344],[[1500,384,24,16]]),
+Lv("The Final Trial",3700,[G(0,200),G(300,120),G(520,120),G(740,120),G(960,120),Pf(1150,360,40),Pf(1250,330,40),Pf(1350,300,40),Pf(1450,330,40),Pf(1550,360,40),G(1650,600),G(2480,370),G(3350,350)],[H(1750,400,50,1700),B(1880,1800),S(1950,2150,384,170),V(2250,400,90,.15,0,50),V(2360,400,90,.15,0,50),F(2600),F(2760),V(2850,400,150,.5,"x",50),FX(2900),Gh(3050,340,60,0,"x"),Gh(3150,300,60,0,"x"),Gh(3250,340,60,0,"x")],[3500,344]),
+Lv("The Last Door",4700,[G(0,400),G(490,150),G(730,100),Pf(1120,320,70),Pf(1240,340,70),G(1350,150),Pf(1560,360,40),Pf(1660,330,40),Pf(1760,300,35),Pf(2060,300,35),Pf(2160,330,35),Pf(2260,360,40),G(2360,200),Pf(2610,350,70),Pf(2850,350,70),Pf(2970,350,70),Pf(3210,350,70),G(3330,200),Pf(3740,340,60),Pf(3840,310,50),Pf(4240,300,35),G(4340,300)].filter(r=>!(r[1]<400&&(r[0]===3740||r[0]===3840||r[0]===4240))),[V(640,400,90,.3,0,50),M(0,350,70,890,990,80),B(1160,1090,320),VS(1710,200,320,120),M(0,330,45,1860,1950,90),VS(2127,200,320,130),V(2730,350,70,.1),V(3090,350,70,.1),H(2865,350,28,2800),H(3225,350,28,3160),V(3530,400,140,.45,"x",50),FX(3590),Gh(3740,340,60,0,"x"),Gh(3840,310,50,0,"x"),M(0,320,50,3960,4050,100),VS(3925,180,300,140),V(4160,330,50,.12),Gh(4240,300,35,4190),B(4380,4290)],[4560,344],[[260,384,24,16]])
+);
+const HUES=[270,200,20,140,320,230,0,170,50,290];
+LV.forEach((l,i)=>l.h=HUES[Math.floor(i/5)]);
+// ---------- save ----------
+// Progress lives in localStorage (works offline in Android WebView). Two keys are kept in sync:
+//  "daredash_progress" = {version,highestLevel,currentLevel,completedLevels[]}  (progress)
+//  "daredash.v1"       = full save incl. best times, deaths, sound, shake        (legacy key, still read)
+// A tiny cookie mirror is a fallback in case a WebView refuses localStorage.
+const SAVE_KEY="daredash.v1",PROG_KEY="daredash_progress";
+let save=newSave();
+let booted=false;
+function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,v);return true}catch(e){return false}}
+function lsDel(k){try{localStorage.removeItem(k)}catch(e){}}
+function ckGet(){try{const m=document.cookie.match(/(?:^|;\s*)daredash_p=([^;]*)/);return m?decodeURIComponent(m[1]):null}catch(e){return null}}
+function ckSet(v){try{document.cookie="daredash_p="+encodeURIComponent(v)+"; max-age=315360000; path=/; SameSite=Lax"}catch(e){}}
+function ckDel(){try{document.cookie="daredash_p=; max-age=0; path=/; SameSite=Lax"}catch(e){}}
+function parseJSON(t){try{return t?JSON.parse(t):null}catch(e){return null}}
+function isObj(o){return o&&typeof o==="object"&&!Array.isArray(o)}
+function loadGameProgress(){
+ try{
+  let hi=1,cur=1;const done={};
+  const mark=n=>{n=Number(n)|0;if(n>=1&&n<=LV.length)done[n]=1};
+  const lvl=n=>Math.min(LV.length,Math.max(1,Number(n)|0));
+  const p=parseJSON(lsGet(PROG_KEY));
+  if(validateSaveData(p)){hi=Math.max(hi,lvl(p.highestLevel));cur=lvl(p.currentLevel);if(Array.isArray(p.completedLevels))p.completedLevels.forEach(mark)}
+  const s=parseJSON(lsGet(SAVE_KEY));
+  if(validateSaveData(s)){
+   hi=Math.max(hi,lvl(s.unlocked));
+   if(isObj(s.done))Object.keys(s.done).forEach(k=>{if(s.done[k])mark(k)});
+   if(isObj(s.best))save.best=s.best;
+   save.deaths=Math.max(0,Number(s.deaths)|0);save.sound=s.sound!==false;save.shake=s.shake!==false;mergeSave(s);
+  }
+  const c=parseJSON(ckGet());
+  if(isObj(c)){hi=Math.max(hi,lvl(c.h));if(Array.isArray(c.c))c.c.forEach(mark)}
+  Object.keys(done).forEach(k=>{hi=Math.max(hi,Math.min(LV.length,Number(k)+1))});
+  save.unlocked=hi;save.cur=Math.min(cur,hi);save.done=done;
+ }catch(e){save.unlocked=Math.max(1,save.unlocked|0);save.cur=1}
+}
+function saveGameProgress(){
+ try{
+  const comp=Object.keys(save.done).map(Number).filter(n=>n>=1).sort((x,y)=>x-y);
+  lsSet(PROG_KEY,JSON.stringify({version:2,highestLevel:save.unlocked,currentLevel:save.cur,completedLevels:comp}));
+  lsSet(SAVE_KEY,JSON.stringify(save));
+  ckSet(JSON.stringify({h:save.unlocked,c:comp}));
+ }catch(e){}
+}
+function persist(){saveGameProgress()}
+loadGameProgress();
+// save whenever the app/page is going away or being hidden
+addEventListener("pagehide",persist);addEventListener("beforeunload",persist);
+document.addEventListener("freeze",persist);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")persist()});
+// ---------- audio ----------
+let AC=null;
+function beep(f,d,type,vol,slide,force){if(!save.sound&&!force)return;try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(AC.state==="suspended")AC.resume();const o=AC.createOscillator(),g=AC.createGain();o.type=type||"square";o.frequency.setValueAtTime(f,AC.currentTime);if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,slide),AC.currentTime+d);g.gain.setValueAtTime(vol||.06,AC.currentTime);g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+d);o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+d)}catch(e){}}
+const SFX={jump:()=>beep(300,.12,"square",.05,600),land:()=>beep(120,.05,"triangle",.05),die:()=>beep(260,.4,"sawtooth",.08,40),warn:()=>beep(700,.08,"square",.04),door:()=>{beep(440,.15,"triangle");setTimeout(()=>beep(660,.25,"triangle"),120)},pop:()=>beep(200,.15,"square",.05,80)};
+function buzz(ms){try{if(save.vib!==false&&ms&&"vibrate" in navigator)navigator.vibrate(ms)}catch(e){}}
+// ---------- input ----------
+const keys={},touch={l:0,r:0,j:0};let jumpPressed=false;
+const KM={ArrowLeft:"l",KeyA:"l",ArrowRight:"r",KeyD:"r",ArrowUp:"j",KeyW:"j",Space:"j"};
+addEventListener("keydown",e=>{if(KM[e.code]){keys[KM[e.code]]=1;if(KM[e.code]==="j"&&!e.repeat)jumpPressed=true;if(state==="play")e.preventDefault()}
+ if(e.repeat)return;if(e.code==="KeyR"&&state==="play")restart();if(e.code==="Escape"||e.code==="KeyP")togglePause();if(e.code==="KeyM"){save.sound=!save.sound;persist()}if(e.code==="KeyF")toggleFS()});
+addEventListener("keyup",e=>{if(KM[e.code])keys[KM[e.code]]=0});
+function clearInput(){for(const k in keys)keys[k]=0;touch.l=touch.r=touch.j=0;jumpPressed=false;document.querySelectorAll("#tc div").forEach(d=>d.classList.remove("p"))}
+addEventListener("blur",()=>{clearInput();if(state==="play")togglePause()});
+document.addEventListener("visibilitychange",()=>{if(document.hidden){clearInput();if(state==="play")togglePause()}});
+document.querySelectorAll("#tc div[data-k]").forEach(b=>{const k=b.dataset.k;
+ const on=e=>{e.preventDefault();touch[k]=1;b.classList.add("p");if(k==="j")jumpPressed=true;buzz(0)};
+ const off=e=>{e.preventDefault();touch[k]=0;b.classList.remove("p")};
+ b.addEventListener("pointerdown",on);b.addEventListener("pointerup",off);b.addEventListener("pointercancel",off);b.addEventListener("pointerleave",off)});
+function pad(){try{const g=(navigator.getGamepads&&navigator.getGamepads()[0]);if(!g)return{l:0,r:0,j:0};const ax=g.axes[0]||0;return{l:g.buttons[14]?.pressed||ax<-.4,r:g.buttons[15]?.pressed||ax>.4,j:g.buttons[0]?.pressed}}catch(e){return{l:0,r:0,j:0}}}
+let padJ=false;
+if(matchMedia("(pointer:coarse)").matches)document.getElementById("tc").classList.add("on");
+// ---------- game state ----------
+const cv=document.getElementById("c"),cx=cv.getContext("2d"),ui=document.getElementById("ui");
+let fxOn=false,state="menu",li=0,lv=null,P,plats,traps,door,cam=0,shake=0,parts=[],t=0,deathsHere=0,timeHere=0,last=0,ambient=[];
+for(let i=0;i<30;i++)ambient.push({x:Math.random()*800,y:Math.random()*450,s:.3+Math.random()});
+
+function resetLevel(){fxOn=false;
+ plats=lv.p.map(r=>({x:r[0],y:r[1],w:r[2],h:r[3],on:true}));
+ traps=(lv.tr||[]).map(o=>{const c=Object.assign({},o);if(o.r){c.x=o.r[0];c.y=o.r[1];c.w=o.r[2];c.h=o.r[3]}
+  if(o.k==="vanish"){c.pl={x:c.x,y:c.y,w:c.w,h:c.h,on:true};plats.push(c.pl);c.timer=-1}
+  if(o.k==="hid")c.vis=false;if(o.k==="block")c.vy=0,c.fall=false;if(o.k==="saw"){c.x=o.ax==="y"?o.x:o.x0;c.dir=1;c.ang=0;if(o.ax==="y")c.y=o.y0}if(o.k==="run")c.fired=false;if(o.k==="ghost"){c.pl={x:c.x,y:c.y,w:c.w,h:c.h,on:false};plats.push(c.pl)}if(o.k==="mov"){c.pl={x:c.x,y:c.y,w:c.w,h:c.h,on:true};plats.push(c.pl);c.dir=1}c.was=false;return c});
+ door={x:lv.d[0],y:lv.d[1],w:30,h:56,open:0,state:0};
+ P={x:lv.s0[0],y:lv.s0[1],vx:0,vy:0,w:C.PW,h:C.PH,ground:false,coy:0,buf:0,dead:0,face:1,sq:1,win:0};
+ cam=Math.max(0,Math.min(lv.W-C.W,P.x-300));parts.length=0;applyCp();
+}
+function restart(){if(state!=="play")return;jumpPressed=false;if(P.dead<=0){die(true)}}
+
+function burst(x,y,n,col,sp){for(let i=0;i<n&&parts.length<160;i++){const a=Math.random()*6.28,s=Math.random()*sp;parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-60,l:.6+Math.random()*.4,c:col})}}
+const hit=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+const zoneHit=(z)=>hit(P,{x:z[0],y:z[1],w:z[2],h:z[3]});
+// ---------- update ----------
+function step(dt){
+ t+=dt;timeHere+=dt;save.pt+=dt;
+ parts.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=900*dt;p.l-=dt});parts=parts.filter(p=>p.l>0);
+ shake=Math.max(0,shake-dt*30);
+ if(P.dead>0){P.dead-=dt;if(P.dead<=0)afterDeath();return}
+ if(P.win>0){P.win+=dt;door.open=Math.min(1,door.open+dt*3);if(P.win>1.1)finishLevel();return}
+ for(const o of traps)if(o.k==="mov")moveP(o,dt);const pd=pad();const L=keys.l||touch.l||pd.l,R=keys.r||touch.r||pd.r,J=keys.j||touch.j||pd.j;
+ if(pd.j&&!padJ)jumpPressed=true;padJ=!!pd.j;
+ const dir=(R?1:0)-(L?1:0);if(dir)P.face=dir;
+ const ac=(P.ground?1:C.AIR)*C.ACCEL*dt;
+ if(dir){P.vx+=dir*ac;P.vx=Math.max(-C.SPEED,Math.min(C.SPEED,P.vx))}else{const f=(P.ground?C.FRIC:C.FRIC*.4)*dt;P.vx=Math.abs(P.vx)<=f?0:P.vx-Math.sign(P.vx)*f}
+ P.coy=P.ground?C.COYOTE:P.coy-dt;P.buf=jumpPressed?C.BUFFER:P.buf-dt;jumpPressed=false;
+ if(P.buf>0&&P.coy>0){P.vy=-C.JUMP;P.coy=0;P.buf=0;P.ground=false;P.sq=1.3;SFX.jump();buzz(8);burst(P.x+10,P.y+28,4,"#ddd",60)}
+ if(!J&&P.vy<-180)P.vy=-180;
+ P.vy=Math.min(C.MAXFALL,P.vy+C.GRAV*dt);
+ P.x+=P.vx*dt;for(const s of plats){if(s.on&&hit(P,s)){if(P.vx>0)P.x=s.x-P.w;else if(P.vx<0)P.x=s.x+s.w;P.vx=0}}
+ if(P.x<0){P.x=0;P.vx=0}if(P.x+P.w>lv.W){P.x=lv.W-P.w;P.vx=0}
+ const was=P.ground;P.ground=false;P.y+=P.vy*dt;
+ for(const s of plats){if(s.on&&hit(P,s)){if(P.vy>0){P.y=s.y-P.h;P.ground=true;if(!was&&P.vy>300){P.sq=.7;SFX.land();burst(P.x+10,P.y+28,5,"#ccc",70)}}else P.y=s.y+s.h;P.vy=0}}
+ P.sq+=(1-P.sq)*Math.min(1,dt*12);
+ if(!isFinite(P.x)||!isFinite(P.y)){resetLevel();return}
+ if(P.y>C.H+120){die();return}
+ // static spikes
+ for(const s of (lv.s||[]))if(hit(P,{x:s[0]+3,y:s[1]+4,w:s[2]-6,h:s[3]-4})){die();return}
+ // traps
+ const feet={x:P.x,y:P.y+P.h,w:P.w,h:3};
+ for(const o of traps){
+  if(o.k==="vanish"){const st=hit(feet,{x:o.x,y:o.y-2,w:o.w,h:6});if(st)o.was=true;if(o.timer<0&&o.pl.on&&(o.m==="l"?(o.was&&!st):o.m==="x"?fxOn:st)){o.timer=o.d;SFX.warn()}
+   if(o.timer>=0){o.timer-=dt;if(o.timer<=0&&o.pl.on){o.pl.on=false;o.timer=-2;SFX.pop();burst(o.x+o.w/2,o.y+4,10,"#ffc94a",90)}}}
+  else if(o.k==="hid"){if(!o.vis&&zoneHit(o.z)){o.vis=true;SFX.pop();if(save.shake)shake=5;buzz(20)}if(o.vis&&hit(P,{x:o.x+4,y:o.y+4,w:o.w-8,h:o.h-4})){die();return}}
+  else if(o.k==="block"){if(!o.fall&&zoneHit(o.z)){o.fall=true;SFX.warn()}
+   if(o.fall&&o.y+o.h<o.to){o.vy+=2200*dt;o.y+=o.vy*dt;if(o.y+o.h>=o.to){o.y=o.to-o.h;if(save.shake)shake=9;SFX.land();burst(o.x+35,o.to,10,"#999",110)}}
+   if(o.fall&&hit(P,{x:o.x+3,y:o.y+3,w:o.w-6,h:o.h-6})){die();return}}
+  else if(o.k==="saw"){if(o.ax==="y"){o.y+=o.dir*o.s*dt;if(o.y>o.y1)o.dir=-1;if(o.y<o.y0)o.dir=1}else{o.x+=o.dir*o.s*dt;if(o.x>o.x1)o.dir=-1;if(o.x<o.x0)o.dir=1}o.ang+=dt*12;if(hit(P,{x:o.x-14,y:o.y-14,w:28,h:28})){die();return}}
+  else if(o.k==="fake"){if(hit(P,{x:o.x,y:o.y,w:o.w,h:o.h})){die();return}}
+  else if(o.k==="run"){if(!o.fired&&zoneHit(o.z)){o.fired=true;door.x=o.to[0];door.y=o.to[1];SFX.pop();if(save.shake)shake=4}}
+  else if(o.k==="ghost"){if(!o.pl.on&&(o.m==="x"?fxOn:zoneHit(o.z))){o.pl.on=true;SFX.pop()}}
+  else if(o.k==="fx"){if(!fxOn&&hit(P,{x:o.x,y:o.y,w:30,h:56})){fxOn=true;SFX.door();if(save.shake)shake=8;buzz(30);burst(o.x+15,o.y+28,20,"#ffc94a",200)}}
+ }
+ chk2();if(hit(P,door)){P.win=.01;P.vx=0;SFX.door();buzz(40);burst(door.x+15,door.y+28,30,"#ffc94a",240)}
+ const tx=P.x-300+P.vx*.25;cam+=(Math.max(0,Math.min(lv.W-C.W,tx))-cam)*Math.min(1,dt*6);
+}
+function moveP(o,dt){const pl=o.pl,rid=P.ground&&P.x<pl.x+pl.w&&P.x+P.w>pl.x&&Math.abs(P.y+P.h-pl.y)<4;
+ if(o.ax==="y"){const y0=pl.y,hi=Math.max(o.a,o.b),lo=Math.min(o.a,o.b);pl.y+=o.dir*o.s*dt;if(pl.y>hi){pl.y=hi;o.dir=-1}if(pl.y<lo){pl.y=lo;o.dir=1}if(rid)P.y+=pl.y-y0}
+ else{const x0=pl.x;pl.x+=o.dir*o.s*dt;if(pl.x>o.b){pl.x=o.b;o.dir=-1}if(pl.x<o.a){pl.x=o.a;o.dir=1}if(rid)P.x+=pl.x-x0}}
+
+const fmt=s=>{const m=Math.floor(s/60);return String(m).padStart(2,"0")+":"+(s%60).toFixed(2).padStart(5,"0")};
+// ---------- render ----------
+function draw(){
+ const sx=shake?(Math.random()-.5)*shake:0,sy=shake?(Math.random()-.5)*shake:0;
+ cx.setTransform(1,0,0,1,0,0);cx.fillStyle="#241a33";cx.fillRect(0,0,C.W,C.H);
+ const g=cx.createLinearGradient(0,0,0,C.H);const hu=lv&&lv.h!==undefined?lv.h:270;g.addColorStop(0,`hsl(${hu},35%,17%)`);g.addColorStop(1,`hsl(${hu+30},35%,28%)`);cx.fillStyle=g;cx.fillRect(0,0,C.W,C.H);
+ cx.fillStyle="rgba(255,255,255,.25)";for(const a of ambient){const x=((a.x-cam*.2*a.s-t*8*a.s)%800+800)%800;cx.fillRect(x,a.y,2*a.s,2*a.s)}
+ if(!lv)return;
+ cx.setTransform(1,0,0,1,-Math.round(cam)+sx,sy);
+ for(const s of plats){if(!s.on)continue;cx.fillStyle=`hsl(${hu},28%,42%)`;cx.fillRect(s.x,s.y,s.w,s.h);cx.fillStyle="#9be07a";cx.fillRect(s.x,s.y,s.w,5);cx.fillStyle="rgba(0,0,0,.25)";cx.fillRect(s.x,s.y+s.h-4,s.w,4)}
+ for(const o of traps){if(o.k==="ghost"&&!o.pl.on&&o.m!=="x"){cx.strokeStyle="rgba(255,255,255,.2)";cx.strokeRect(o.x,o.y,o.w,o.h)}if(o.k==="vanish"&&o.timer>0&&o.pl.on){cx.fillStyle="rgba(255,201,74,.5)";cx.fillRect(o.x+(Math.random()-.5)*3,o.y,o.w,o.h)}}
+ for(const s of (lv.s||[]))spikes(s[0],s[1],s[2],s[3]);
+ for(const o of traps){
+  if(o.k==="hid"&&o.vis)spikes(o.x,o.y,o.w,o.h);
+  else if(o.k==="block"){cx.fillStyle="#7d7d8f";cx.fillRect(o.x,o.y,o.w,o.h);cx.fillStyle="#a6a6b8";cx.fillRect(o.x,o.y,o.w,6);cx.fillStyle="#ff5a4d";cx.fillRect(o.x+o.w/2-8,o.y+o.h-22,16,10)}
+  else if(o.k==="saw"){cx.save();cx.translate(o.x,o.y);cx.rotate(o.ang);cx.fillStyle="#e9ecf2";cx.beginPath();for(let i=0;i<16;i++){const r=i%2?10:19,a=i*Math.PI/8;cx.lineTo(Math.cos(a)*r,Math.sin(a)*r)}cx.closePath();cx.fill();cx.fillStyle="#ff5a4d";cx.beginPath();cx.arc(0,0,4,0,7);cx.fill();cx.restore()}
+  else if(o.k==="fake")drawDoor(o.x,o.y,0,true);
+  else if(o.k==="fx")drawDoor(o.x,o.y,0,false);
+ }
+ drawDoor(door.x,door.y,door.open,false);
+ for(const p of parts){cx.globalAlpha=Math.max(0,p.l);cx.fillStyle=p.c;cx.fillRect(p.x,p.y,4,4)}cx.globalAlpha=1;
+ if(P.dead<=0){cx.save();cx.translate(P.x+10,P.y+28);cx.scale(1/P.sq,P.sq);cx.fillStyle=(CHS[save.ch]||CHS[0])[1];cx.fillRect(-10,-28,20,28);cx.fillStyle="#1b1424";cx.fillRect(P.face>0?1:-7,-22,6,7);cx.fillRect(P.face>0?9:-3,-22,3,7);cx.fillStyle="#ff5a4d";cx.fillRect(-10,-6,20,6);cx.restore()}
+ cx.setTransform(1,0,0,1,0,0);cx.fillStyle="#f6efe2";cx.font="700 20px Trebuchet MS,Verdana,sans-serif";
+ cx.fillText(`LEVEL ${li+1}: ${lv.n}`,14,28);cx.fillText(`DEATHS: ${deathsHere}`,14,54);cx.fillText(`TIME: ${fmt(timeHere)}`,14,80);
+}
+function spikes(x,y,w,h){cx.fillStyle="#ff5a4d";const n=Math.max(1,Math.round(w/16)),sw=w/n;for(let i=0;i<n;i++){cx.beginPath();cx.moveTo(x+i*sw,y+h);cx.lineTo(x+i*sw+sw/2,y);cx.lineTo(x+(i+1)*sw,y+h);cx.fill()}}
+function drawDoor(x,y,open,fake){cx.fillStyle="#3b2410";cx.fillRect(x-4,y-4,38,60);cx.fillStyle=open?"#ffe9a0":(fake?"#9a5a25":"#b5722d");cx.fillRect(x,y,30,56);
+ if(!open){cx.fillStyle="#d38f43";cx.fillRect(x+3,y+3,10,50);cx.fillStyle="#ffc94a";cx.beginPath();cx.arc(x+24,y+30,3,0,7);cx.fill()}else{cx.fillStyle="rgba(255,240,160,.6)";cx.fillRect(x-10,y-10,50,76)}}
+// ---------- UI ----------
+function show(h,c){ui.innerHTML=h;ui.className=c||"";const b=ui.querySelector("button");b&&b.focus({preventScroll:true})}
+function hide(){ui.classList.add("h")}
+function play(){hide();state="play";clearInput();last=performance.now()}
+
+
+
+function howto(){show(`<h2>HOW TO PLAY</h2><p>Move: A/D or arrows · Jump: Space/W/Up · Restart: R · Pause: Esc · Mute: M · Fullscreen: F</p><p>Reach the door. Traps will surprise you, but every one has a clue. Dying restarts instantly.</p><button class="s" onclick="menu()">${T.back}</button>`)}
+
+
+
+
+addEventListener("contextmenu",e=>e.preventDefault());try{matchMedia("(orientation:portrait) and (pointer:coarse)").addEventListener("change",e=>{if(e.matches&&state==="play")togglePause()})}catch(e){}
+document.getElementById("pb").onclick=()=>togglePause();
+// ---------- v2: checkpoints, modes, achievements, characters, victory ----------
+const CPS={26:[[920,372]],30:[[620,372],[1520,372]],37:[[820,372]],39:[[1010,372]],40:[[1470,372]],46:[[720,372],[1430,372]],47:[[1120,372]],48:[[1210,372],[2230,372]],49:[[1670,372],[2500,372]],50:[[1370,372],[2380,372],[3350,372]]};
+const GEMS={1:[450,360],2:[200,360],3:[150,360],4:[200,360],5:[300,360],6:[810,250],7:[150,360],9:[460,310],10:[510,310],11:[120,360]};
+LV.forEach((l,i)=>{l.checkpoints=(CPS[i+1]||[]).map((c,k)=>({id:"cp"+(k+1),x:c[0],y:c[1]}));l.gem=GEMS[i+1]||null});
+const WN=["WORLD 1 — BEGINNING","WORLD 2 — TRAPS","WORLD 3 — CHAOS","WORLD 4 — SPEED","WORLD 5 — FINAL DARE"];
+const CHS=[["Dasher","#ffc94a",0],["Mint","#5fe0b0",5],["Sky","#6ab7ff",15],["Blossom","#ff8fd0",30],["Ghost","#e9ecf2",50]];
+let mode="normal",cpA=null,cpMsg=0,tmsg="",tt=0,conf=[],fromP=0,scr="main",runInfo=null,newA=[],fwT=0;
+const tcEl=document.getElementById("tc");
+function newSave(){return{v:2,unlocked:1,cur:1,best:{},deaths:0,sound:true,shake:true,done:{},dl:{},pt:0,col:{},ach:{},chars:{0:1},ch:0,vib:true,music:true,fs:true,cs:1,cp:null,gc:false,cd:null,fin:null,daily:""}}
+function validateSaveData(o){return isObj(o)&&(o.v>=1||o.version>=1)}
+function mergeSave(s){try{["dl","col","ach","chars"].forEach(k=>{if(isObj(s[k]))save[k]=s[k]});["pt","ch","cs"].forEach(k=>{if(isFinite(s[k]))save[k]=Math.max(0,+s[k])});save.cs=Math.min(2,save.cs|0);["vib","music","fs","gc"].forEach(k=>{if(typeof s[k]==="boolean")save[k]=s[k]});if(isObj(s.cp))save.cp=s.cp;if(typeof s.cd==="string")save.cd=s.cd;if(isObj(s.fin))save.fin=s.fin;if(typeof s.daily==="string")save.daily=s.daily;save.chars[0]=1}catch(e){}}
+function resetGameProgress(){lsDel(SAVE_KEY);lsDel(PROG_KEY);ckDel();const o=save;save=newSave();["sound","shake","vib","music","fs","cs"].forEach(k=>{save[k]=o[k]});cpA=null;booted=false;loadLevel(0);booted=true;persist()}
+const real=()=>mode==="normal"||mode==="trial"||mode==="nodeath";
+const par=n=>LV[n-1].W/110+3,dc=()=>Object.keys(save.done).length,gemCount=()=>Object.keys(save.col).length;
+const totalT=()=>Object.keys(save.best).reduce((a,k)=>a+(save.best[k].t||0),0);
+const on=b=>b?"ON":"OFF";
+function applyCS(){try{tcEl.style.setProperty("--cs",[66,84,104][save.cs|0]+"px")}catch(e){}}
+function toast(m){tmsg=m;tt=2.5}
+const ACH=[["first","FIRST DARE","Complete Level 1",()=>save.done[1]],["ten","TEN DOWN","Complete 10 levels",()=>dc()>=10],["half","HALFWAY THERE","Complete 25 levels",()=>dc()>=25],
+["nofear","NO FEAR","Complete a level without dying",()=>runInfo&&runInfo.d===0],["speed","SPEED DARE","Beat a level's target time",()=>runInfo&&runInfo.t<par(runInfo.n)],
+["coll","COLLECTOR","Collect 8 gems",()=>gemCount()>=8],["surv","SURVIVOR","Finish level 30+ with 2 or fewer deaths",()=>runInfo&&runInfo.n>=30&&runInfo.d<=2],
+["final","THE FINAL DARE","Complete the final level",()=>save.done[LV.length]],["dared","YOU DARED","Complete the entire game",()=>save.gc]];
+function checkAch(){ACH.forEach(a=>{try{if(!save.ach[a[0]]&&a[3]()){save.ach[a[0]]=1;newA.push(a[1]);toast("ACHIEVEMENT: "+a[1])}}catch(e){}});persist()}
+function unlockChars(){CHS.forEach((c,i)=>{if(dc()>=c[2])save.chars[i]=1})}
+// audio extras
+function mus(f,d,v){beep(f,d,"triangle",v,0,1)}
+SFX.cp=()=>{beep(520,.1,"triangle",.06);setTimeout(()=>beep(780,.2,"triangle",.06),90)};
+SFX.gem=()=>beep(900,.12,"sine",.06,1400);
+SFX.win=()=>[523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,.2,"triangle",.06),i*110));
+function victoryMusic(){if(save.music)[523,659,784,1047,784,1047,1319,1047,1319,1568].forEach((f,i)=>setTimeout(()=>mus(f,.3,.06),i*190))}
+let mi=0;const MP=[220,262,330,262,196,247,294,247],MM=[262,330,392,330];
+setInterval(()=>{try{if(!save.music||!AC||AC.state!=="running"||document.hidden)return;if(state==="play")mus(MP[mi%8]*(mi%16<8?1:1.25),.25,.025);else if(state==="menu"||state==="done")mus(MM[mi%4],.4,.02);mi++}catch(e){}},300);
+setInterval(()=>{if(state==="play")persist()},15000);
+ui.addEventListener("click",e=>{if(e.target.closest&&e.target.closest("button"))beep(520,.05,"square",.04)});
+addEventListener("keydown",e=>{try{if(e.code==="Escape"&&state==="menu"&&scr!=="main"&&!ui.classList.contains("h"))back();
+ if((e.code==="ArrowDown"||e.code==="ArrowUp")&&!ui.classList.contains("h")){const b=[...ui.querySelectorAll("button:not(:disabled)")];if(!b.length)return;let i=b.indexOf(document.activeElement);i=(i+(e.code==="ArrowDown"?1:-1)+b.length)%b.length;b[i].focus({preventScroll:true});e.preventDefault()}}catch(er){}});
+// checkpoints
+function setCp(c,k){cpA={l:li+1,id:c.id,k,x:c.x,y:c.y,fx:fxOn,dx:door.x,dy:door.y,run:[],gh:[],th:timeHere,dh:deathsHere};
+ traps.forEach((o,i)=>{if(o.k==="run"&&o.fired)cpA.run.push(i);if(o.k==="ghost"&&o.pl.on)cpA.gh.push(i)});
+ save.cp=cpA;persist();SFX.cp();buzz(30);cpMsg=1.6;burst(c.x+10,c.y,18,"#5fe0b0",200)}
+function applyCp(){if(!cpA||cpA.l!==li+1)return;P.x=cpA.x;P.y=cpA.y;fxOn=!!cpA.fx;if(isFinite(cpA.dx)&&isFinite(cpA.dy)){door.x=cpA.dx;door.y=cpA.dy}
+ (cpA.run||[]).forEach(i=>{if(traps[i])traps[i].fired=true});(cpA.gh||[]).forEach(i=>{if(traps[i]&&traps[i].pl)traps[i].pl.on=true});cam=Math.max(0,Math.min(lv.W-C.W,P.x-300))}
+function chk2(){const L=lv.checkpoints;for(let k=0;k<L.length;k++){const c=L[k];if((!cpA||k>cpA.k)&&hit(P,{x:c.x-14,y:c.y-32,w:48,h:70}))setCp(c,k)}
+ const g=lv.gem;if(g&&real()&&!save.col[li+1]&&hit(P,{x:g[0]-12,y:g[1]-12,w:24,h:24})){save.col[li+1]=1;SFX.gem();buzz(15);burst(g[0],g[1],10,"#5fe0b0",120);toast("GEM COLLECTED!");checkAch()}}
+function loadLevel(i,keep){li=Math.max(0,Math.min(LV.length-1,i|0));lv=LV[li];deathsHere=0;timeHere=0;const s=save.cp;
+ cpA=(keep&&isObj(s)&&s.l===li+1&&isFinite(s.x)&&isFinite(s.y)&&(s.k|0)<lv.checkpoints.length)?s:null;if(cpA){timeHere=+cpA.th||0;deathsHere=cpA.dh|0}else save.cp=null;
+ resetLevel();save.cur=li+1;if(booted)persist()}
+function go(i){loadLevel(i);play()}
+function die(quiet){if(P.dead>0)return;P.dead=C.DEATH_T;if(real()){deathsHere++;save.deaths++;save.dl[li+1]=(save.dl[li+1]|0)+1;persist()}SFX.die();buzz(90);if(save.shake)shake=10;burst(P.x+10,P.y+14,24,"#ff5a4d",260)}
+function afterDeath(){if(mode==="nodeath"){state="fail";show(`<h2>NO-DEATH FAILED</h2><p>One death ends the run.</p><button onclick="go(li)">TRY AGAIN</button><button class="s" onclick="levelSelect()">${T.levels}</button><button class="s" onclick="menu()">${T.menu}</button>`)}else resetLevel()}
+function stars(n){const b=save.best[n];if(!save.done[n]||!b)return"";return"★"+(b.d===0?"★":"☆")+(b.t<par(n)?"★":"☆")}
+function finishLevel(){
+ state="done";const n=li+1,last=n===LV.length,rl=real();let rec=false;const prev=save.best[n];newA=[];
+ if(rl){rec=!prev||timeHere<prev.t;if(rec)save.best[n]={t:timeHere,d:deathsHere};else if(deathsHere<prev.d)prev.d=deathsHere;
+  save.done[n]=1;if(!last)save.unlocked=Math.max(save.unlocked,n+1);save.cp=null;cpA=null;unlockChars();runInfo={n,t:timeHere,d:deathsHere}}
+ else if(mode==="daily")save.daily=new Date().toDateString();
+ if(last&&rl){save.gc=true;save.cd=new Date().toISOString().slice(0,10);const tot=totalT();save.fin={t:tot,bt:Math.min(tot,(save.fin&&save.fin.bt)||tot),d:save.deaths,lv:dc(),col:gemCount(),ach:0,date:save.cd};unlockChars()}
+ checkAch();runInfo=null;if(save.fin)save.fin.ach=Object.keys(save.ach).length;persist();
+ SFX.win();buzz([60,40,60]);
+ if(last&&rl){victory();return}
+ show(`<h2>LEVEL COMPLETE!</h2><p>${n}. ${lv.n} ${rl?stars(n):""}</p><p>Time ${fmt(timeHere)} · Deaths ${deathsHere}</p>${rl?`<p>Best ${fmt(save.best[n].t)} · Total deaths ${save.deaths}</p>`:'<p>Progress is not saved in this mode.</p>'}${mode==="trial"?`<p>Target ${fmt(par(n))} ${timeHere<par(n)?"— BEAT IT!":""}</p>`:""}${rec?'<p style="color:var(--gold);font-weight:700">NEW RECORD!</p>':''}${newA.map(a=>`<p style="color:var(--mint)">🏆 ${a}</p>`).join("")}
+ ${mode!=="daily"&&!last&&n+1<=save.unlocked?`<button onclick="go(${li+1})">${T.next}</button>`:""}<button class="s" onclick="go(li)">${T.again}</button><button class="s" onclick="levelSelect()">${T.levels}</button><button class="s" onclick="menu()">${T.menu}</button>`)}
+function victory(again){state="victory";lv=null;scr="vic";conf.length=0;const f=save.fin||{};
+ show(`<h1 class="yd">YOU DARED!</h1><h2>CONGRATULATIONS!</h2><p>YOU COMPLETED DAREDASH</p><p>Levels ${dc()}/${LV.length} · Deaths ${save.deaths}</p><p>Total time ${fmt(totalT())} · Best run ${fmt(f.bt||totalT())}</p><p>Gems ${gemCount()} · Achievements ${Object.keys(save.ach).length}/${ACH.length}</p><button onclick="menu()">MAIN MENU</button>`,"v");
+ if(!again){victoryMusic();buzz([80,50,80,50,200])}}
+// screens
+function back(){if(fromP)pauseMenu();else menu()}
+function menu(){state="menu";lv=null;scr="main";fromP=0;const ok=lsSet("daredash_t","1"),started=save.unlocked>1||dc()>0||save.cp;
+ show(`<h1>DAREDASH</h1>${save.gc?'<h2 class="yd" style="color:var(--gold)">YOU DARED!</h2>':'<p>Nothing is what it seems. Learn from every death.</p>'}${ok?'':'<p style="color:var(--hot);font-size:14px">Saving unavailable: progress will not persist.</p>'}
+ <div class="bg"><button class="w" onclick="startGame()">${T.cont}${started?" (LEVEL "+(save.cp?save.cp.l:Math.min(save.unlocked,LV.length))+")":""}</button><button class="s" onclick="startGame(1)">PLAY</button><button class="s" onclick="setMode('normal')">LEVEL SELECT</button><button class="s" onclick="challenges()">CHALLENGES</button><button class="s" onclick="chars()">CHARACTERS</button><button class="s" onclick="achs()">ACHIEVEMENTS</button><button class="s" onclick="settings(0)">SETTINGS</button><button class="s" onclick="howto()">HOW TO PLAY</button>${save.gc?'<button class="w s" onclick="victory(1)">VICTORY STATS</button>':''}</div>`)}
+function startGame(fresh){mode="normal";if(fresh)loadLevel(0);else loadLevel((save.cp&&save.cp.l?save.cp.l:Math.min(save.unlocked,LV.length))-1,1);play()}
+function setMode(m){mode=m;levelSelect()}
+function levelSelect(){state="menu";scr="ls";const ml={normal:"",practice:" — PRACTICE",trial:" — TIME TRIAL",nodeath:" — NO-DEATH",daily:""}[mode]||"";let h=`<h2>${T.levels}${ml}</h2><div id="grid">`;
+ for(let i=1;i<=LV.length;i++){if((i-1)%10===0)h+=`<div class="wh">${WN[(i-1)/10]}</div>`;const lk=i>save.unlocked,b=save.best[i];
+  h+=`<button ${lk?"disabled":""} class="${save.done[i]?"done":""}" onclick="go(${i-1})" title="${LV[i-1].n}">${lk?"🔒":i}${lk?"":`<small>${b?fmt(b.t).slice(0,8):"--"}</small><small>☠${save.dl[i]|0} ${stars(i)}</small>`}</button>`}
+ h+=`</div><button class="s" onclick="${fromP?"pauseMenu()":"menu()"}">${T.back}</button>`;show(h)}
+function challenges(){scr="ch";show(`<h2>CHALLENGES</h2><div class="bg"><button class="s" onclick="setMode('practice')">PRACTICE</button><button class="s" onclick="setMode('trial')">TIME TRIAL</button><button class="s" onclick="setMode('nodeath')">NO-DEATH</button><button class="s" onclick="daily()">DAILY${save.daily===new Date().toDateString()?" ✔":""}</button></div><p>Practice: no records. Time Trial: beat the target time. No-Death: one death ends the run. Daily: a new level each day.</p><button class="s" onclick="menu()">${T.back}</button>`)}
+function daily(){const d=new Date();mode="daily";go((d.getFullYear()*372+d.getMonth()*31+d.getDate())%LV.length)}
+function chars(){scr="chr";let h="<h2>CHARACTERS</h2><div class=\"bg\">";CHS.forEach((c,i)=>{const u=save.chars[i]||dc()>=c[2];h+=`<button ${u?"":"disabled"} style="background:${c[1]};color:#123" onclick="pickCh(${i})">${u?((save.ch|0)===i?"✔ ":"")+c[0]:"🔒 "+c[0]+" ("+c[2]+" levels)"}</button>`});
+ show(h+`</div><button class="s" onclick="menu()">${T.back}</button>`)}
+function pickCh(i){save.ch=i;persist();chars()}
+function achs(){scr="ach";show(`<h2>ACHIEVEMENTS</h2><div class="al">${ACH.map(a=>`<p>${save.ach[a[0]]?"🏆":"🔒"} <b>${a[1]}</b> — ${a[2]}</p>`).join("")}<p>Deaths ${save.deaths} · Gems ${gemCount()} · Clear time ${fmt(totalT())} · Played ${fmt(save.pt)}</p></div><button class="s" onclick="menu()">${T.back}</button>`)}
+function settings(f){scr="set";if(f!==undefined)fromP=f?1:0;
+ show(`<h2>SETTINGS</h2><div class="bg"><button class="s" onclick="tg('music')">MUSIC: ${on(save.music)}</button><button class="s" onclick="tg('sound')">SOUND: ${on(save.sound)}</button><button class="s" onclick="tg('vib')">VIBRATION: ${on(save.vib)}</button><button class="s" onclick="tg('shake')">SHAKE: ${on(save.shake)}</button><button class="s" onclick="tfs()">FULLSCREEN: ${on(!!fsEl())}</button><button class="s" onclick="tcs()">CONTROLS: ${["SMALL","MEDIUM","LARGE"][save.cs|0]}</button><button class="w" onclick="confirmReset()">${T.reset}</button><button class="w s" onclick="back()">${T.back}</button></div>`)}
+function tg(k){save[k]=!save[k];persist();if(k==="vib"&&save.vib)buzz(30);settings()}
+function tcs(){save.cs=((save.cs|0)+1)%3;applyCS();persist();settings()}
+function tfs(){save.fs=!fsEl();toggleFS();persist();setTimeout(settings,400)}
+function confirmReset(){show(`<h2>RESET ALL DAREDASH PROGRESS?</h2><p>This deletes unlocked levels, records, stats and achievements.</p><button class="s" onclick="settings()">CANCEL</button><button onclick="doReset()">RESET</button>`)}
+function doReset(){resetGameProgress();menu()}
+function pauseMenu(){fromP=0;scr="pause";show(`<h2>PAUSED</h2><button onclick="play()">${T.resume}</button><button class="s" onclick="go(li)">RESTART LEVEL</button><button class="s" onclick="fromP=1;levelSelect()">${T.levels}</button><button class="s" onclick="settings(1)">SETTINGS</button><button class="s" onclick="menu()">MAIN MENU</button>`)}
+function togglePause(){if(state==="play"){state="pause";clearInput();persist();pauseMenu()}else if(state==="pause")play()}
+// overlays (checkpoints, gem, HUD, toasts, victory effects)
+function drawOver(dt){try{
+ cx.setTransform(1,0,0,1,0,0);
+ if(lv&&(state==="play"||state==="pause"||state==="done"||state==="fail")){
+  cx.setTransform(1,0,0,1,-Math.round(cam),0);
+  lv.checkpoints.forEach(c=>{const a=cpA&&cpA.id===c.id;cx.fillStyle="#ccc";cx.fillRect(c.x+8,c.y-6,3,34);cx.fillStyle=a?"#5fe0b0":"#8a8aa0";cx.beginPath();cx.moveTo(c.x+11,c.y-6);cx.lineTo(c.x+31,c.y+2);cx.lineTo(c.x+11,c.y+10);cx.fill();
+   if(a){cx.globalAlpha=.25+.15*Math.sin(t*5);cx.fillStyle="#5fe0b0";cx.beginPath();cx.arc(c.x+10,c.y+14,22,0,7);cx.fill();cx.globalAlpha=1}});
+  const g=lv.gem;if(g&&!save.col[li+1]){cx.fillStyle="#5fe0b0";cx.beginPath();cx.moveTo(g[0],g[1]-11+Math.sin(t*4)*2);cx.lineTo(g[0]+9,g[1]);cx.lineTo(g[0],g[1]+11+Math.sin(t*4)*2);cx.lineTo(g[0]-9,g[1]);cx.fill()}
+  cx.setTransform(1,0,0,1,0,0);cx.font="700 15px Trebuchet MS,Verdana,sans-serif";cx.fillStyle="#ffc94a";
+  const b=save.best[li+1],ml={practice:"PRACTICE (no records)",trial:"TIME TRIAL  TARGET "+fmt(par(li+1)),nodeath:"NO-DEATH CHALLENGE",daily:"DAILY CHALLENGE"}[mode];
+  cx.fillText("BEST: "+(b?fmt(b.t):"--")+(lv.checkpoints.length?"   CP: "+(cpA?cpA.k+1:0)+"/"+lv.checkpoints.length:""),14,102);if(ml)cx.fillText(ml,14,122);
+  if(cpMsg>0){cpMsg-=dt;cx.globalAlpha=Math.min(1,cpMsg*2);cx.font="700 34px Trebuchet MS,Verdana,sans-serif";cx.textAlign="center";cx.fillStyle="#5fe0b0";cx.fillText("CHECKPOINT!",400,120);cx.textAlign="left";cx.globalAlpha=1}
+  if(tt>0){tt-=dt;cx.font="700 16px Trebuchet MS,Verdana,sans-serif";cx.textAlign="center";cx.fillStyle="#fff";cx.fillText(tmsg,400,160);cx.textAlign="left"}}
+ if(state==="victory"){fwT-=dt;const cl=["#ffc94a","#ff5a4d","#5fe0b0","#6ab7ff","#ff8fd0"];
+  if(conf.length<140)for(let i=0;i<2;i++)conf.push({x:Math.random()*800,y:-8,vx:(Math.random()-.5)*60,vy:60+Math.random()*120,l:5,c:cl[i+(conf.length%3)],w:4+Math.random()*4});
+  if(fwT<=0){fwT=.7;const x=100+Math.random()*600,y=60+Math.random()*160,c=cl[(Math.random()*5)|0];for(let i=0;i<22;i++){const a=i/22*6.28,s=80+Math.random()*80;conf.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:1,c,w:3})}}
+  for(const p of conf){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=(p.l>2?0:120)*dt;p.l-=dt*(p.l>2?.2:1)}conf=conf.filter(p=>p.l>0&&p.y<470);
+  conf.forEach(p=>{cx.globalAlpha=Math.min(1,p.l);cx.fillStyle=p.c;cx.fillRect(p.x,p.y,p.w,p.w)});cx.globalAlpha=1;
+  cx.fillStyle="rgba(255,233,160,"+(.25+.15*Math.sin(t*4))+")";cx.beginPath();cx.arc(375,368,70,0,7);cx.fill();drawDoor(360,340,1,false);
+  cx.save();cx.translate(450,400-Math.abs(Math.sin(t*4))*40);cx.fillStyle=(CHS[save.ch]||CHS[0])[1];cx.fillRect(-10,-28,20,28);cx.fillStyle="#1b1424";cx.fillRect(1,-22,6,7);cx.fillRect(9,-22,3,7);cx.fillStyle="#ff5a4d";cx.fillRect(-10,-6,20,6);cx.restore()}
+}catch(e){}}
+function fsEl(){const d=document;return d.fullscreenElement||d.webkitFullscreenElement||null}
+function reqFS(){try{const e=document.documentElement,req=e.requestFullscreen||e.webkitRequestFullscreen||e.msRequestFullscreen;if(req){const r=req.call(e,{navigationUI:"hide"});if(r&&r.catch)r.catch(()=>{})}}catch(er){}}
+function lockLandscape(){try{if(screen.orientation&&screen.orientation.lock)screen.orientation.lock("landscape").catch(()=>{})}catch(er){}}
+function enterGameFullscreen(){if(!fsEl())reqFS();lockLandscape()}
+function toggleFS(){
+ try{
+  const d=document;
+  if(!fsEl()){reqFS();lockLandscape()}
+  else{const ex=d.exitFullscreen||d.webkitExitFullscreen||d.msExitFullscreen;if(ex){const r=ex.call(d);if(r&&r.catch)r.catch(()=>{})}}
+ }catch(er){}
+ setTimeout(resize,150);setTimeout(resize,500);
+}
+// Fullscreen needs a real user gesture. Retry on the first few taps (WebViews often refuse the first one).
+let fsTries=0;
+function autoFS(e){
+ if(fsTries>=8||fsEl()||save.fs===false)return;
+ try{const b=e&&e.target&&e.target.closest&&e.target.closest("button");if(b&&/toggleFS/.test(b.getAttribute("onclick")||""))return}catch(er){}
+ fsTries++;enterGameFullscreen();setTimeout(resize,200);
+}
+addEventListener("pointerdown",autoFS,{passive:true});
+addEventListener("touchstart",autoFS,{passive:true});
+// ---------- resize & loop ----------
+function resize(){
+ const de=document.documentElement;
+ const w=Math.max(1,window.innerWidth||de.clientWidth||screen.width),h=Math.max(1,window.innerHeight||de.clientHeight||screen.height);
+ const s=Math.min(w/C.W,h/C.H);
+ cv.style.width=Math.floor(C.W*s)+"px";cv.style.height=Math.floor(C.H*s)+"px";
+}
+function resizeSoon(){resize();setTimeout(resize,100);setTimeout(resize,350);setTimeout(resize,900)}
+addEventListener("resize",resize);addEventListener("orientationchange",resizeSoon);addEventListener("load",resizeSoon);
+document.addEventListener("fullscreenchange",resizeSoon);document.addEventListener("webkitfullscreenchange",resizeSoon);
+try{if(window.visualViewport)visualViewport.addEventListener("resize",resize)}catch(e){}
+resizeSoon();
+let acc=0;
+function frame(now){requestAnimationFrame(frame);let dt=Math.min(.05,(now-last)/1000||0);last=now;
+ if(state==="play"||state==="done"){acc+=dt;while(acc>=1/120){if(state==="play")step(1/120);acc-=1/120}}else t+=dt;
+ draw();drawOver(dt)}
+loadLevel(save.cp&&save.cp.l?save.cp.l-1:Math.min(save.unlocked,LV.length)-1,1);booted=true;applyCS();menu();requestAnimationFrame(frame);
+</script></body></html>
